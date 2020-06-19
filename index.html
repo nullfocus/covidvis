@@ -1,0 +1,111 @@
+<html>
+<head>
+    <script>
+
+        var spanDate = null;
+        var svgCounties = null;
+
+        var lines = [];
+        var lineNumber = 1;//skip header
+        var curDate = null;
+
+        var intervalID = null;
+
+        var fipsLookup = {};
+
+        function readLine(){
+            if(lineNumber >= lines.length){
+                clearInterval(intervalID);
+                return;
+            }
+
+            var curLine = lines[lineNumber];
+
+            var parts = curLine.split(',');
+
+            var date = parts[0],
+                county = parts[1],
+                state = parts[2],
+                fips = parts[3],
+                cases = parseFloat(parts[4]),
+                deaths = parts[5];
+
+            if(curDate != date){
+                spanDate.innerText = curDate = date;
+
+                return;
+            }
+
+            //update line number here, so if we've crossed the date boundary we will just re-read the line
+            lineNumber++;
+
+            if(fips && fips != 'Unknown'){
+                if(!fipsLookup.hasOwnProperty(fips)){
+                    fipsLookup[fips] = {
+                        lastCases : parseFloat(1), // avoid divide by zero
+                        elem : svgCounties.getElementById('c' + fips)
+                    }
+                }
+
+                curCountyObj = fipsLookup[fips];
+
+                if(curCountyObj.lastCases == cases){
+
+                    //just quickly fill black, don't compute
+                    curCountyObj.elem.setAttributeNS(null, 'fill', '#000');
+
+                }else{
+                    
+                    //compute the shade of black -> red
+                    var redPercent = ((cases - curCountyObj.lastCases) / curCountyObj.lastCases);
+
+                    //clamp between 0-1 in the case of more rapid than 2x (100%) growth
+                    redPercent = Math.max(0, Math.min(redPercent, 1))
+
+                    //covert to 0-255 and then to hex
+                    var redHex =  Math.floor(255 * redPercent).toString(16);
+                    
+                    //prepend zero if < 16
+                    if(redHex.length == 1)
+                        redHex = '0' + redHex;
+
+                    var color = '#' + redHex + '0000';
+                    
+                    curCountyObj.elem.setAttributeNS(null, 'fill', color);
+                    curCountyObj.lastCases = cases;
+                }
+            }
+
+            //stack depth of 3200 should be ok for quick and dirty recursion
+            readLine();
+        }
+
+        function loadedData() {
+            svgCounties = document.getElementById('svg-us-counties').getSVGDocument();
+            
+            lines = this.responseText.split('\n');
+
+            spanDate = document.getElementById('span-date');
+
+            intervalID = setInterval(readLine, 500);
+        }
+
+        function makeRequest(){
+            var oReq = new XMLHttpRequest();
+            
+            oReq.addEventListener("load", loadedData);
+            oReq.open("GET", "https://raw.githubusercontent.com/nytimes/covid-19-data/master/us-counties.csv");
+            oReq.send();
+        }
+    </script>
+</head>
+
+<body onload="makeRequest()">
+    <span id="span-date"></span>
+    <br />
+    <object id="svg-us-counties" 
+            data="./Usa_counties_large.svg" 
+            type="image/svg+xml"></object>
+
+</body>
+</html>
